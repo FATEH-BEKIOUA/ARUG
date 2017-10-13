@@ -1,0 +1,100 @@
+---
+title: "How Does Algeria compare to other Arab Countries in doing business?  "
+author: "Bekioua Fateh"
+date: "October 15, 2016"
+output: html_document
+---
+
+
+
+###Getting Doing Business Data from Worrld Bank Website  
+
+```{r, message = FALSE, warning=FALSE}
+library(dplyr)
+library(googleVis)
+op <- options(gvis.plot.tag='chart')
+library(tidyr)
+library(DT)
+link <- "http://databank.worldbank.org/data/download/DB_CSV_en.zip"
+download.file(link, destfile = "db.zip")
+```
+Unzipping and reading the Data
+```{r,message = FALSE, warning=FALSE}
+db <-read.csv(unz("db.zip",filename = "DB_Data.csv"),stringsAsFactors = TRUE)
+```
+Show the data structure and the top 100 row
+
+```{r, message = FALSE, warning=FALSE}
+str(db)
+datatable(db[1:100,])
+```
+
+
+
+###Preparing the Data  
+Changing the name of the first variable  
+Creating a vector to store Arab Countries names  
+
+```{r, message = FALSE, warning=FALSE}
+
+names(db)[1]<- "Country.Name"
+arabs<- c("Algeria", "Tunisia", "Egypt, Arab Rep.", "Jordan", "Kuwait",
+         "Lebanon", "Middle East & North Africa","Morocco","Oman","Qatar",
+         "Saudi Arabia","Sudan","United Arab Emirates","Yemen, Rep.",
+         "Bahrain")
+         
+```
+
+Selecting only the needed variables for our analysis  
+Filtring to get only the Arab Countries and  
+Removing records with missing data  
+
+```{r, message = FALSE, warning=FALSE}
+db_arab<- db %>%
+        select(1,3,10:15) %>%
+        filter(Country.Name %in% arabs) %>%
+        na.omit()
+```
+
+Showing the data structure and the top 100 row after the data filtration  
+
+```{r, message = FALSE, warning=FALSE}
+str(db_arab)
+datatable(db_arab[1:100,])
+```
+
+Gathering the years variables into one column in order to have one line per country and year  
+```{r, message = FALSE, warning=FALSE}
+db_arab <- gather(db_arab, year, value , 3:8)
+datatable(db_arab[1:100,])
+```
+
+Spreading the indicator column into multiple columns in order to have one indicator per column  
+```{r, message = FALSE, warning=FALSE}
+db_arab <- spread(db_arab, Indicator.Name, value)
+datatable(db_arab[1:100,])
+```
+
+Removing all the indicators with missing values in order to compare countries by commun indicator  
+
+
+```{r, message = FALSE, warning=FALSE}
+present<-(sapply(db_arab, function(x)!any(is.na(x))))
+db_arab<-db_arab[, present]
+db_arab$year<- as.numeric(substr(db_arab$year, 2,6))
+datatable(db_arab)
+```
+
+### Ploting the motion chart
+```{r, results='asis',message = FALSE, warning=FALSE}
+chart<- gvisMotionChart(db_arab, idvar="Country.Name", 
+                        timevar= "year", yvar = "Time required to connect to electricity (days)",
+                        xvar = "Procedures required to start a business (number)",
+                        colorvar = "Time required to start a business (days)",
+                        sizevar = "Tax payments (number)",
+                        options=list(width=1024, height=600))
+plot(chart)
+options(op)
+```
+
+Please note that the Motion Chart is only displayed when hosted on a web server, or if placed in a directory which has been added to the trusted sources in the security settings of Macromedia. See the googleVis package vignette for more details

@@ -1,0 +1,104 @@
+---
+title: "Mapping POS Performance in Algiers Using Simulated Data"
+output:
+  html_document: default
+  html_notebook: default
+  pdf_document: default
+---
+
+##Loading the Libraries
+
+```{r, message=FALSE, warning=FALSE}
+library(deldir)
+library(rgdal)
+library(ggmap)
+library(leaflet)
+library(htmlwidgets)
+library(htmltools)
+library(DT)
+```
+
+
+##Get Algiers Location
+```{r}
+algiers<-geocode("Wilaya d'Alger, Algeria",output = "more",source = "google")
+algiers
+```
+
+
+
+### Simulate point of sale data and location
+```{r}
+lon <- runif(500, min = algiers$west, max= algiers$east)
+lat <- runif(500, min = algiers$south, max = algiers$north)
+sales<- rnorm(500, mean = 1000, sd=100)
+Base<- rnorm(500, mean = 10000, sd=1500)
+name <- paste("Store", 1:500, sep="-")
+data <- data.frame(lon = lon, lat=lat, sales = sales, Base = Base, name = name)
+datatable(data)
+```
+
+
+### Voronoi FUNCTION
+```{r}
+library(sp)
+SPointsDF_to_voronoi_SPolysDF <- function(sp) {
+        # tile.list extracts the polygon data from the deldir computation
+        vor_desc <- tile.list(deldir(sp@coords[,1], sp@coords[,2]))
+        lapply(1:(length(vor_desc)), function(i) {
+                
+                # tile.list gets us the points for the polygons but we
+                # still have to close them, hence the need for the rbind
+                tmp <- cbind(vor_desc[[i]]$x, vor_desc[[i]]$y)
+                tmp <- rbind(tmp, tmp[1,])
+                
+                # now we can make the Polygon(s)
+                Polygons(list(Polygon(tmp)), ID=i)
+                
+        }) -> vor_polygons
+        # hopefully the caller passed in good metadata!
+        sp_dat <- sp@data
+        # this way the IDs _should_ match up w/the data & voronoi polys
+        rownames(sp_dat) <- sapply(slot(SpatialPolygons(vor_polygons),'polygons'), slot, 'ID')
+        SpatialPolygonsDataFrame(SpatialPolygons(vor_polygons), data=sp_dat)
+}
+```
+
+
+### Apply the Voronoi Algorithm on the data  
+```{r}
+vor_pts <- SpatialPointsDataFrame(cbind(data$lon,data$lat),data, match.ID=TRUE)
+vor <- SPointsDF_to_voronoi_SPolysDF(vor_pts)
+vor_df <- fortify(vor)
+```
+
+
+
+## Print the Map
+```{r}
+m = leaflet(data) %>% addTiles()
+m = m %>% setView(algiers$lon,algiers$lat, zoom =5)
+m = m %>% addMarkers(lng = ~ lon, lat = ~ lat, 
+                     popup = ~htmlEscape(as.character(name)),
+                     clusterOptions = markerClusterOptions())
+### Coloring the voronoi
+m = m %>% 
+        addPolygons(data=vor,
+                    stroke=TRUE, 
+                    fillColor = ~as.factor(ifelse(data$sales >=1056 ,"Red","Green")),
+                    weight=2,
+                    fill=TRUE, fillOpacity = 0.2,
+                    smoothFactor=0.5)
+### Adding Legend
+m= m %>% 
+        addLegend("bottomright", 
+                  labels = c("Points de vente performants", "Points de vente non performants"),
+                  colors= c("green", "red"),
+                  values = ~as.factor(ifelse(data$sales)>=1056,"Green","Red"),
+                  title = "Performance des Points de ventes", opacity = 1)
+m
+
+```
+
+
+
